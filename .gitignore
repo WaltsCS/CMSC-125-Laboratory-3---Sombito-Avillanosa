@@ -1,0 +1,11 @@
+# Binaries
+bankdb
+bin/
+
+# Object files
+*.o
+obj/
+
+# Debug outputs
+*.out
+*.log
