@@ -16,7 +16,7 @@ make all
 
 ## Implementation Roadmap
 
-### Week 1: Foundation & Core Infrastructure
+### Week 1: Foundation & Core Infrastructure (We're here)
 - Establish project structure, data models, and Makefile.
 - Implement timer thread and CLI argument parsing.
 - Develop file I/O utilities and account initialization.
