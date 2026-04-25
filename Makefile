@@ -21,7 +21,7 @@ all: $(EXECUTABLE)
 debug: CFLAGS = $(CFLAGS_DEBUG)
 debug: clean $(EXECUTABLE)
 
-$(BIN_DIR)/$(EXECUTABLE): $(OBJECTS)
+$(EXECUTABLE): $(OBJECTS)
 	@mkdir -p $(BIN_DIR)
 	$(CC) $(CFLAGS) -o $@ $^
 
