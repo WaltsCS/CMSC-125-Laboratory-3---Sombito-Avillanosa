@@ -1,8 +1,8 @@
 # CMSC 125 Lab 3: Concurrent Banking System
 
 ## Team Members
-- [Team Member 1 Name]
-- [Team Member 2 Name]
+- [Chakinzo N. Sombito]
+- [Walton Karl Avillanosa]
 
 ## Project Overview
 A multi-threaded banking system using POSIX threads, reader-writer locks, semaphores, and deadlock prevention. Implements concurrent transaction processing with proper synchronization and performance monitoring.
