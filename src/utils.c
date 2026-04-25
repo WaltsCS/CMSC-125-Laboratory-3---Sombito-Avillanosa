@@ -24,7 +24,7 @@ int parse_accounts_file(const char* filename) {
     
     while (fgets(line, sizeof(line), fp) != NULL) {
         // Skip comments and empty lines
-        if (line[0] == '#' || line[0] == '\n' || line[0] == '\r') {
+        if (line[0] == '#' || line[0] == '\n' || line[0] == '\r' || (line[0] == '/' && line[1] == '/')) {
             continue;
         }
         
@@ -70,7 +70,7 @@ int parse_trace_file(const char* filename, Transaction** transactions, int* num_
     
     while (fgets(line, sizeof(line), fp) != NULL) {
         // Skip comments and empty lines
-        if (line[0] == '#' || line[0] == '\n' || line[0] == '\r') {
+        if (line[0] == '#' || line[0] == '\n' || line[0] == '\r' || (line[0] == '/' && line[1] == '/')) {
             continue;
         }
         
