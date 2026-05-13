@@ -43,3 +43,129 @@ Account* get_account(int account_id) {
     }
     return NULL;
 }
+
+int get_balance(int account_id) {
+    Account* acc = get_account(account_id);
+
+    if (acc == NULL) {
+        fprintf(stderr, "Error: account %d not found\n", account_id);
+        return -1;
+    }
+
+    pthread_rwlock_rdlock(&acc->lock);
+
+    int balance = acc->balance_centavos;
+
+    pthread_rwlock_unlock(&acc->lock);
+
+    return balance;
+}
+
+bool deposit(int account_id, int amount_centavos) {
+    if (amount_centavos < 0) {
+        fprintf(stderr, "Error: cannot deposit negative amount %d\n",
+                amount_centavos);
+        return false;
+    }
+
+    Account* acc = get_account(account_id);
+
+    if (acc == NULL) {
+        fprintf(stderr, "Error: account %d not found\n", account_id);
+        return false;
+    }
+
+    pthread_rwlock_wrlock(&acc->lock);
+
+    acc->balance_centavos += amount_centavos;
+
+    pthread_rwlock_unlock(&acc->lock);
+
+    return true;
+}
+
+bool withdraw(int account_id, int amount_centavos) {
+    if (amount_centavos < 0) {
+        fprintf(stderr, "Error: cannot withdraw negative amount %d\n",
+                amount_centavos);
+        return false;
+    }
+
+    Account* acc = get_account(account_id);
+
+    if (acc == NULL) {
+        fprintf(stderr, "Error: account %d not found\n", account_id);
+        return false;
+    }
+
+    pthread_rwlock_wrlock(&acc->lock);
+
+    if (acc->balance_centavos < amount_centavos) {
+        pthread_rwlock_unlock(&acc->lock);
+        return false;
+    }
+
+    acc->balance_centavos -= amount_centavos;
+
+    pthread_rwlock_unlock(&acc->lock);
+
+    return true;
+}
+
+bool transfer(int from_id, int to_id, int amount_centavos) {
+    if (amount_centavos < 0) {
+        fprintf(stderr, "Error: cannot transfer negative amount %d\n",
+                amount_centavos);
+        return false;
+    }
+
+    if (from_id == to_id) {
+        fprintf(stderr, "Error: cannot transfer from account %d to itself\n",
+                from_id);
+        return false;
+    }
+
+    Account* from_acc = get_account(from_id);
+    Account* to_acc = get_account(to_id);
+
+    if (from_acc == NULL) {
+        fprintf(stderr, "Error: source account %d not found\n", from_id);
+        return false;
+    }
+
+    if (to_acc == NULL) {
+        fprintf(stderr, "Error: target account %d not found\n", to_id);
+        return false;
+    }
+
+
+    // For deadlock prevention via lock ordering:
+    // always lock the account with the smaller account_id first. 
+    Account* first_acc;
+    Account* second_acc;
+
+    if (from_acc->account_id < to_acc->account_id) {
+        first_acc = from_acc;
+        second_acc = to_acc;
+    } else {
+        first_acc = to_acc;
+        second_acc = from_acc;
+    }
+
+    pthread_rwlock_wrlock(&first_acc->lock);
+    pthread_rwlock_wrlock(&second_acc->lock);
+
+    if (from_acc->balance_centavos < amount_centavos) {
+        pthread_rwlock_unlock(&second_acc->lock);
+        pthread_rwlock_unlock(&first_acc->lock);
+        return false;
+    }
+
+    from_acc->balance_centavos -= amount_centavos;
+    to_acc->balance_centavos += amount_centavos;
+
+    pthread_rwlock_unlock(&second_acc->lock);
+    pthread_rwlock_unlock(&first_acc->lock);
+
+    return true;
+}
