@@ -1,37 +1,66 @@
 # CMSC 125 Lab 3: Concurrent Banking System
 
 ## Team Members
-- [Chakinzo N. Sombito]
-- [Walton Karl Avillanosa]
+- Sombito, Chakinzo N.
+- Avillanosa, Walton Karl
 
-## Project Overview
-A multi-threaded banking system using POSIX threads, reader-writer locks, semaphores, and deadlock prevention. Implements concurrent transaction processing with proper synchronization and performance monitoring.
-
-## Building
-
-### Compile Release Version
+## Compilation
+### Normal Build
 ```bash
 make all
 ```
 
-## Implementation Roadmap
+### Debug Build (with ThreadSanitizer)
+```bash
+make debug
+```
 
-### Week 1: Foundation & Core Infrastructure (We're here)
-- Establish project structure, data models, and Makefile.
-- Implement timer thread and CLI argument parsing.
-- Develop file I/O utilities and account initialization.
+### Clean Build Files
+```bash
+make clean
+```
 
-### Week 2: Transaction Execution & Reader-Writer Locks
-- Implement multi-threaded transaction execution.
-- Integrate per-account reader-writer locks.
-- Develop lock ordering strategy for deadlock prevention.
+## Usage
+Run the `bankdb` executable with the following options:
 
-### Week 3: Buffer Pool, Metrics & Performance
-- Implement a bounded buffer pool using semaphores.
-- Integrate comprehensive performance metrics and transaction tracking.
-- Conduct performance optimizations and balance conservation checks.
+```bash
+./bankdb [OPTIONS]
+```
 
-### Week 4: Final Testing, Documentation & Defense Prep
-- Perform rigorous testing with ThreadSanitizer.
-- Finalize documentation and design reports.
-- Prepare technical walkthrough and performance demonstrations for defense.
+### Command-Line Options
+- `--accounts=<file>`: Path to the initial accounts file.
+- `--trace=<file>`: Path to the transaction trace file to execute.
+- `--deadlock=<strategy>`: Deadlock handling strategy (`prevention` is implemented via lock ordering).
+- `--tick-ms=<ms>`: Duration of a single global tick in milliseconds (default: 100ms).
+- `--verbose`: Enable detailed logging of transactions and buffer pool operations.
+
+### Example
+```bash
+./bankdb --accounts=tests/accounts.txt --trace=tests/trace_simple.txt --deadlock=prevention --verbose
+```
+
+## Test Cases
+The system includes 5 standard test cases to verify different synchronization mechanisms:
+1. **Simple Trace (`trace_simple.txt`)**: Verifies basic transaction execution and balance consistency.
+2. **Reader-Writer (`trace_readers.txt`)**: Demonstrates concurrent read performance using `pthread_rwlock_t`.
+3. **Deadlock (`trace_deadlock.txt`)**: Proves deadlock prevention using lock ordering on concurrent opposite transfers.
+4. **Abort (`trace_abort.txt`)**: Tests transaction atomicity and rollback on insufficient funds.
+5. **Buffer (`trace_buffer.txt`)**: Verifies buffer pool saturation, blocking, and recovery using semaphores.
+
+Run all tests using:
+```bash
+make test
+```
+
+## Implemented Features
+- **Multi-threaded Execution**: Transactions run in parallel using POSIX threads.
+- **Reader-Writer Locks**: Per-account locks for concurrent reads and exclusive writes.
+- **Deadlock Prevention**: Deterministic lock ordering (ascending account IDs) to break circular wait.
+- **Timer Thread**: Global tick management with condition variables for synchronized scheduling.
+- **Bounded Buffer Pool**: Limits concurrent account access using semaphores to manage a fixed number of slots.
+- **Performance Metrics**: Comprehensive reporting of transaction status, throughput, and buffer pool usage.
+- **ThreadSanitizer Clean**: Zero warnings or data races under ThreadSanitizer analysis.
+- **Data Integrity**: Money conservation check ensures initial and final bank totals match exactly.
+
+## Known Limitations
+- Buffer pool size is currently fixed at 5 slots via `BUFFER_POOL_SIZE` macro.
