@@ -78,9 +78,9 @@ int parse_trace_file(const char* filename, Transaction** transactions, int* num_
         char op_type_str[16];
         int account_id, target_account = -1, amount = 0;
         
-        // Parse line: TxID  StartTick  OpType  AccountID  [Amount]  [TargetAccount]
+        // Parse line: TxID  StartTick  OpType  AccountID  [TargetAccount] [Amount]
         int ret = sscanf(line, "T%d %d %s %d %d %d",
-                        &tx_id, &start_tick, op_type_str, &account_id, &amount, &target_account);
+                        &tx_id, &start_tick, op_type_str, &account_id, &target_account, &amount);
         
         if (ret < 4) {
             fprintf(stderr, "Error: Invalid line in trace file: %s", line);
