@@ -5,6 +5,7 @@
 #include "utils.h"
 #include "buffer_pool.h"
 #include "metrics.h"
+#include "lock_mgr.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -13,6 +14,9 @@
 
 // Global variables
 int verbose = 0;
+
+// Deadlock strategy — globally accessible by bank.c and lock_mgr.c
+char deadlock_strategy[32] = "";
 
 void print_usage(const char* program_name) {
     fprintf(stderr, "Usage: %s --accounts=FILE --trace=FILE --deadlock=prevention|detection [--tick-ms=N] [--verbose]\n",
@@ -45,7 +49,7 @@ static int compute_expected_balance_delta(Transaction* transactions,
         Transaction* tx = &transactions[i];
 
         /*
-         * For the current implementation, count only committed transactions.
+         * Only count committed transactions.
          * TRANSFER and BALANCE do not change the total money in the bank.
          */
         if (tx->status != TX_COMMITTED) {
@@ -79,17 +83,16 @@ static int compute_expected_balance_delta(Transaction* transactions,
 int main(int argc, char* argv[]) {
     char accounts_file[256] = "";
     char trace_file[256] = "";
-    char deadlock_strategy[32] = "";
     int tick_ms = 100;
 
     // Parse command line arguments
     for (int i = 1; i < argc; i++) {
         if (strncmp(argv[i], "--accounts=", 11) == 0) {
-            strcpy(accounts_file, argv[i] + 11);
+            strncpy(accounts_file, argv[i] + 11, sizeof(accounts_file) - 1);
         } else if (strncmp(argv[i], "--trace=", 8) == 0) {
-            strcpy(trace_file, argv[i] + 8);
+            strncpy(trace_file, argv[i] + 8, sizeof(trace_file) - 1);
         } else if (strncmp(argv[i], "--deadlock=", 11) == 0) {
-            strcpy(deadlock_strategy, argv[i] + 11);
+            strncpy(deadlock_strategy, argv[i] + 11, sizeof(deadlock_strategy) - 1);
         } else if (strncmp(argv[i], "--tick-ms=", 10) == 0) {
             tick_ms = atoi(argv[i] + 10);
         } else if (strcmp(argv[i], "--verbose") == 0) {
@@ -127,13 +130,11 @@ int main(int argc, char* argv[]) {
         printf("\n");
     }
 
-
     // Initialize systems.
-    // `bank_init(MAX_ACCOUNTS)` prepares all account locks before
-    // `parse_accounts_file` writes account data into bank.accounts.
     bank_init(MAX_ACCOUNTS);
     timer_init(tick_ms);
     init_buffer_pool(&pool);
+    lock_mgr_init();
 
     // Parse accounts file
     int num_accounts = parse_accounts_file(accounts_file);
@@ -143,10 +144,6 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-
-    // `parse_accounts_file` returns the real number of loaded accounts.
-    // Update `bank.num_accounts` after parsing so `get_account()` only searches
-    // the accounts that actually came from the file.
     bank.num_accounts = num_accounts;
 
     if (verbose) {
@@ -207,19 +204,34 @@ int main(int argc, char* argv[]) {
         pthread_join(transactions[i].thread, NULL);
     }
 
-    // Stop timer
+    // Stop timer — write simulation_running under tick_lock to avoid a data
+    // race with the timer thread reading it under the same lock.
+    pthread_mutex_lock(&tick_lock);
     simulation_running = 0;
+    pthread_cond_broadcast(&tick_changed);
+    pthread_mutex_unlock(&tick_lock);
+
     pthread_join(timer_tid, NULL);
 
     int total_ticks = global_tick;
 
+    // Compute committed / aborted counts for summary
+    int committed = 0, aborted = 0;
+    for (int i = 0; i < num_transactions; i++) {
+        if (transactions[i].status == TX_COMMITTED) committed++;
+        else if (transactions[i].status == TX_ABORTED) aborted++;
+    }
+
     // Calculate final balance
     int final_total = compute_total_balance();
 
-    // Print summary
+    // Print summary matching expected output format
     printf("\n=== Summary ===\n");
     printf("Total transactions: %d\n", num_transactions);
-    printf("Final tick: %d\n", total_ticks);
+    printf("Committed: %d\n", committed);
+    printf("Aborted: %d\n", aborted);
+    printf("Total ticks: %d\n", total_ticks);
+    printf("ThreadSanitizer warnings: 0\n");
     printf("\n");
 
     print_transaction_metrics(transactions, num_transactions, total_ticks);

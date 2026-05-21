@@ -1,12 +1,12 @@
 CC = gcc
-CFLAGS = -pthread -O2 -Wall -Wextra
-DEBUG_FLAGS = -g -fsanitize=thread -pthread
+CFLAGS = -pthread -O2 -Wall -Wextra -I./include
+DEBUG_FLAGS = -g -fsanitize=thread -pthread -I./include
 
 all:
-	$(CC) $(CFLAGS) -I./include src/*.c -o bankdb
+	$(CC) $(CFLAGS) src/*.c -o bankdb
 
 debug:
-	$(CC) $(DEBUG_FLAGS) -I./include src/*.c -o bankdb
+	$(CC) $(DEBUG_FLAGS) src/*.c -o bankdb
 
 clean:
 	rm -f bankdb

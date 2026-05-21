@@ -17,14 +17,24 @@ void timer_init(int interval_ms) {
 }
 
 void* timer_thread(void* arg) {
-    while (simulation_running) {
+    (void)arg;  // suppress unused parameter warning
+
+    while (1) {
         usleep(tick_interval_ms * 1000);  // Convert ms to microseconds
-        
+
         pthread_mutex_lock(&tick_lock);
+
+        // Check the flag while holding tick_lock to avoid a data race.
+        if (!simulation_running) {
+            pthread_mutex_unlock(&tick_lock);
+            break;
+        }
+
         global_tick++;
         pthread_cond_broadcast(&tick_changed);
         pthread_mutex_unlock(&tick_lock);
     }
+
     return NULL;
 }
 
