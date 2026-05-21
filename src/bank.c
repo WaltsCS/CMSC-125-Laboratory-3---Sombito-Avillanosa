@@ -1,6 +1,8 @@
 #include "bank.h"
+#include "lock_mgr.h"
 #include <stdlib.h>
 #include <stdio.h>
+#include <string.h>
 
 Bank bank;
 
@@ -10,14 +12,14 @@ void bank_init(int num_accounts) {
                 num_accounts, MAX_ACCOUNTS);
         exit(1);
     }
-    
+
     bank.num_accounts = num_accounts;
-    
+
     // Initialize each account
     for (int i = 0; i < num_accounts; i++) {
         bank.accounts[i].account_id = -1;  // Mark as empty
         bank.accounts[i].balance_centavos = 0;
-        
+
         // Initialize rwlock
         int ret = pthread_rwlock_init(&bank.accounts[i].lock, NULL);
         if (ret != 0) {
@@ -25,7 +27,7 @@ void bank_init(int num_accounts) {
             exit(1);
         }
     }
-    
+
     // Initialize bank lock
     int ret = pthread_mutex_init(&bank.bank_lock, NULL);
     if (ret != 0) {
@@ -52,11 +54,14 @@ int get_balance(int account_id) {
         return -1;
     }
 
-    pthread_rwlock_rdlock(&acc->lock);
+    if (!acquire_read_lock(acc)) {
+        // Transaction was chosen as a deadlock victim
+        return -2;
+    }
 
     int balance = acc->balance_centavos;
 
-    pthread_rwlock_unlock(&acc->lock);
+    release_read_lock(acc);
 
     return balance;
 }
@@ -75,11 +80,13 @@ bool deposit(int account_id, int amount_centavos) {
         return false;
     }
 
-    pthread_rwlock_wrlock(&acc->lock);
+    if (!acquire_write_lock(acc)) {
+        return false;  // deadlock victim
+    }
 
     acc->balance_centavos += amount_centavos;
 
-    pthread_rwlock_unlock(&acc->lock);
+    release_write_lock(acc);
 
     return true;
 }
@@ -98,16 +105,18 @@ bool withdraw(int account_id, int amount_centavos) {
         return false;
     }
 
-    pthread_rwlock_wrlock(&acc->lock);
+    if (!acquire_write_lock(acc)) {
+        return false;  // deadlock victim
+    }
 
     if (acc->balance_centavos < amount_centavos) {
-        pthread_rwlock_unlock(&acc->lock);
+        release_write_lock(acc);
         return false;
     }
 
     acc->balance_centavos -= amount_centavos;
 
-    pthread_rwlock_unlock(&acc->lock);
+    release_write_lock(acc);
 
     return true;
 }
@@ -126,7 +135,7 @@ bool transfer(int from_id, int to_id, int amount_centavos) {
     }
 
     Account* from_acc = get_account(from_id);
-    Account* to_acc = get_account(to_id);
+    Account* to_acc   = get_account(to_id);
 
     if (from_acc == NULL) {
         fprintf(stderr, "Error: source account %d not found\n", from_id);
@@ -138,34 +147,47 @@ bool transfer(int from_id, int to_id, int amount_centavos) {
         return false;
     }
 
-
-    // For deadlock prevention via lock ordering:
-    // always lock the account with the smaller account_id first. 
+    // Choose locking order depending on the deadlock strategy.
     Account* first_acc;
     Account* second_acc;
 
-    if (from_acc->account_id < to_acc->account_id) {
-        first_acc = from_acc;
-        second_acc = to_acc;
+    if (strcmp(deadlock_strategy, "prevention") == 0) {
+        // Strategy A: Lock ordering — always acquire lower account_id first.
+        // This breaks the Circular Wait Coffman condition.
+        if (from_acc->account_id < to_acc->account_id) {
+            first_acc  = from_acc;
+            second_acc = to_acc;
+        } else {
+            first_acc  = to_acc;
+            second_acc = from_acc;
+        }
     } else {
-        first_acc = to_acc;
-        second_acc = from_acc;
+        // Strategy B: Deadlock Detection — lock in operation order; the
+        // lock manager will detect and resolve cycles via the wait-for graph.
+        first_acc  = from_acc;
+        second_acc = to_acc;
     }
 
-    pthread_rwlock_wrlock(&first_acc->lock);
-    pthread_rwlock_wrlock(&second_acc->lock);
+    if (!acquire_write_lock(first_acc)) {
+        return false;  // deadlock victim
+    }
+
+    if (!acquire_write_lock(second_acc)) {
+        release_write_lock(first_acc);
+        return false;  // deadlock victim
+    }
 
     if (from_acc->balance_centavos < amount_centavos) {
-        pthread_rwlock_unlock(&second_acc->lock);
-        pthread_rwlock_unlock(&first_acc->lock);
+        release_write_lock(second_acc);
+        release_write_lock(first_acc);
         return false;
     }
 
     from_acc->balance_centavos -= amount_centavos;
-    to_acc->balance_centavos += amount_centavos;
+    to_acc->balance_centavos   += amount_centavos;
 
-    pthread_rwlock_unlock(&second_acc->lock);
-    pthread_rwlock_unlock(&first_acc->lock);
+    release_write_lock(second_acc);
+    release_write_lock(first_acc);
 
     return true;
 }

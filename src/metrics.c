@@ -26,10 +26,11 @@ void print_transaction_metrics(Transaction* transactions, int num_transactions, 
     }
     
     double avg_wait = (double)total_wait / num_transactions;
-    double throughput = (double)num_transactions / total_ticks;
-    
+    int effective_ticks = (total_ticks > 0) ? total_ticks : 1;
+    double throughput = (double)num_transactions / effective_ticks;
+
     printf("\nAverage wait time: %.1f ticks\n", avg_wait);
-    printf("Throughput: %d transactions / %d ticks = %.2f tx/tick\n", 
+    printf("Throughput: %d transactions / %d ticks = %.2f tx/tick\n",
            num_transactions, total_ticks, throughput);
 }
 

@@ -3,6 +3,7 @@
 #include "bank.h"
 #include "timer.h"
 #include "buffer_pool.h"
+#include "lock_mgr.h"
 
 #include <stdio.h>
 
@@ -23,6 +24,10 @@ void* execute_transaction(void* arg) {
         return NULL;
     }
 
+    // Identify this thread's transaction to the lock manager.
+    current_tx_id = tx->tx_id;
+    init_tx_lock_state(tx->tx_id);
+
     // Wait until the scheduled simulation tick before starting.
     wait_until_tick(tx->start_tick);
 
@@ -36,7 +41,6 @@ void* execute_transaction(void* arg) {
 
     // Load all accounts needed by this transaction into the buffer pool.
     // For TRANSFER, both source and target accounts are loaded.
-    
     for (int i = 0; i < tx->num_ops; i++) {
         Operation* op = &tx->ops[i];
 
@@ -47,9 +51,8 @@ void* execute_transaction(void* arg) {
         }
     }
 
-    
-    // Execute each operation in order.
 
+    // Execute each operation in order.
     for (int i = 0; i < tx->num_ops; i++) {
         Operation* op = &tx->ops[i];
 
@@ -96,7 +99,8 @@ void* execute_transaction(void* arg) {
                                    op->amount_centavos);
 
                 if (!success) {
-                    printf("T%d aborted: transfer failed\n", tx->tx_id);
+                    printf("T%d aborted: transfer failed (deadlock victim or insufficient funds)\n",
+                           tx->tx_id);
                 }
 
                 break;
@@ -144,11 +148,12 @@ void* execute_transaction(void* arg) {
                 }
             }
 
+            cleanup_tx_lock_state(tx->tx_id);
             return NULL;
         }
     }
 
-    
+
     // Unload all accounts after successful execution.
     for (int i = 0; i < tx->num_ops; i++) {
         Operation* op = &tx->ops[i];
@@ -165,5 +170,6 @@ void* execute_transaction(void* arg) {
 
     printf("Tick %d: T%d committed\n", tx->actual_end, tx->tx_id);
 
+    cleanup_tx_lock_state(tx->tx_id);
     return NULL;
 }
